@@ -22,4 +22,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     url(r'^api/events/$', views.events_list),
     url(r'^api/events/(?P<pk>[0-9]+)$', views.events_detail),
+    url(r'^api/events/(?P<date>[a-z]+)$', views.event_map),
 ]

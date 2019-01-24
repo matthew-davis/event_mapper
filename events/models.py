@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.timezone import now
 
 class Event(models.Model):
     GlobalEventID = models.IntegerField()
@@ -62,6 +63,8 @@ class Event(models.Model):
     ActionGeo_FeatureID = models.CharField(max_length=255, null=True)
     DateAdded = models.CharField(max_length=255, null=True)
     SourceURL = models.TextField(blank=True, null=True, unique=True)
+    DataMapCountry = models.CharField(max_length=255, null=True)
+    EventDate = models.DateTimeField(default=now, editable=False)
 
 def __str__(self):
     return self.GlobalEventID

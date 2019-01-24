@@ -5,6 +5,11 @@ import logging
 from io import BytesIO
 from zipfile import ZipFile
 import psycopg2
+import reverse_geocoder as rg
+from collections import OrderedDict
+from iso3166 import countries
+import random
+from django.db import transaction, DatabaseError
 
 # Setup logging
 logging.basicConfig(filename='../root/platinum/events/data/download_log.log', level=logging.DEBUG, format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -80,19 +85,19 @@ else:
                                 line[57] = '0.0'
 
                             if line[26][:2] == '01':
-                            	line[26] = 'Public Statement'
+                            	line[26] = 'Statement'
                             if line[26][:2] == '02':
                             	line[26] = 'Appealing'
                             if line[26][:2] == '03':
-                            	line[26] = 'Intending to cooperate'
+                            	line[26] = 'Intend to Help'
                             if line[26][:2] == '04':
                             	line[26] = 'Consulting'
                             if line[26][:2] == '05':
-                            	line[26] = 'Diplomatic cooperation'
+                            	line[26] = 'Diplomatic Help'
                             if line[26][:2] == '06':
-                            	line[26] = 'Material cooperation'
+                            	line[26] = 'Material Help'
                             if line[26][:2] == '07':
-                            	line[26] = 'Providing aid'
+                            	line[26] = 'Providing Aid'
                             if line[26][:2] == '08':
                             	line[26] = 'Yielding'
                             if line[26][:2] == '09':
@@ -108,9 +113,9 @@ else:
                             if line[26][:2] == '14':
                             	line[26] = 'Protesting'
                             if line[26][:2] == '15':
-                            	line[26] = 'Exhibiting a force posture'
+                            	line[26] = 'Force Posture'
                             if line[26][:2] == '16':
-                            	line[26] = 'Reducing relations'
+                            	line[26] = 'Declining'
                             if line[26][:2] == '17':
                             	line[26] = 'Coercing'
                             if line[26][:2] == '18':
@@ -118,26 +123,67 @@ else:
                             if line[26][:2] == '19':
                             	line[26] = 'Fighting'
                             if line[26][:2] == '20':
-                            	line[26] = 'Unconditional mass violence'
+                            	line[26] = 'Mass Violence'
 
-                            line[59] = line[59][6:8] + '/' + line[59][4:6] + '/' + line[59][0:4] + ' ' + line[59][8:10] + ':' + line[59][10:12] + ':' + line[59][12:]
+                            dateadded = line[59][6:8] + '/' + line[59][4:6] + '/' + line[59][0:4] + ' ' + line[59][8:10] + ':' + line[59][10:12] + ':' + line[59][12:]
 
-                            list1 = line[60].replace('.', '/').replace('_', '/').split('/')
                             best = 0
-                            for value1 in list1:
-                                if best < value1.count('-'):
-                                     line[60] = value1.replace('-', ' ')
-                            list2 = line[60].split(' ')
-                            for value2 in list2:
-                                if isinstance(value2, int) and value2 > 9999:
-                                    line[60].replace(value2, '')
+                            eventtitle = ''
+                            if '-' in line[60]:
+                                list1 = line[60].replace('.', '/').replace('_', '/').replace(',', '/').split('/')
+                                for value1 in list1:
+                                    if best < value1.count('-'):
+                                         eventtitle = value1
+                                list2 = eventtitle.split('-')
+                                for value2 in list2:
+                                    if value2.isdigit() and len(value2) > 4:
+                                        list2.remove(value2)
+                                eventtitle = ' '.join(str(s) for s in list2)
+                                if eventtitle.lower().startswith('http'):
+                                    eventtitle = 'XXX'
+                                elif eventtitle[0].isdigit():
+                                    eventtitle = 'XXX'
+                                elif eventtitle == '':
+                                    eventtitle = 'XXX'
+                                else:
+                                    eventtitle = eventtitle[:59].title()
+                            else:
+                                eventtitle = 'XXX'
 
-                            try:
-                                cur.execute('INSERT INTO events_event ("GlobalEventID", "Day", "MonthYear", "Year", "FractionDate", "Actor1Code", "Actor1Name", "Actor1CountryCode", "Actor1KnownGroupCode", "Actor1EthnicCode", "Actor1Religion1Code", "Actor1Religion2Code", "Actor1Type1Code", "Actor1Type2Code", "Actor1Type3Code", "Actor2Code", "Actor2Name", "Actor2CountryCode", "Actor2KnownGroupCode", "Actor2EthnicCode", "Actor2Religion1Code", "Actor2Religion2Code", "Actor2Type1Code", "Actor2Type2Code", "Actor2Type3Code", "IsRootEvent", "EventCode", "EventBaseCode", "EventRootCode", "QuadClass", "GoldsteinScale", "NumMentions", "NumSources", "NumArticles", "AvgTone", "Actor1Geo_Type", "Actor1Geo_Fullname", "Actor1Geo_CountryCode", "Actor1Geo_ADM1Code", "Actor1Geo_ADM2Code", "Actor1Geo_Lat", "Actor1Geo_Long", "Actor1Geo_FeatureID", "Actor2Geo_Type", "Actor2Geo_Fullname", "Actor2Geo_CountryCode", "Actor2Geo_ADM1Code", "Actor2Geo_ADM2Code", "Actor2Geo_Lat", "Actor2Geo_Long", "Actor2Geo_FeatureID", "ActionGeo_Type", "ActionGeo_Fullname", "ActionGeo_CountryCode", "ActionGeo_ADM1Code", "ActionGeo_ADM2Code", "ActionGeo_Lat", "ActionGeo_Long", "ActionGeo_FeatureID", "DateAdded", "SourceURL") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)', (line[0], line[1], line[2], line[3], line[4], line[5], line[6], line[7], line[8], line[9], line[10], line[11], line[12], line[13], line[14], line[15], line[16], line[17], line[18], line[19], line[20], line[21], line[22], line[23], line[24], line[25], line[26], line[27], line[28], line[29], line[30], line[31], line[32], line[33], line[34], line[35], line[36], line[37], line[38], line[39], line[40], line[41], line[42], line[43], line[44], line[45], line[46], line[47], line[48], line[49], line[50], line[51], line[52], line[53], line[54], line[55], line[56], line[57], line[58], line[59], line[60].capitalize()))
-                            except:
+                            location = ''
+                            latlong = (line[56], line[57])
+                            location = countries.get(rg.search(latlong)[0]['cc']).alpha3
+
+                            strminute = ''
+                            strsecond = ''
+                            randomtime = random.randint(0,899)
+                            minute = int(line[59][10:12]) + randomtime // 60
+                            if minute < 10:
+                                strminute = '0' + str(minute)
+                            else:
+                                strminute = str(minute)
+                            second = randomtime % 60
+                            if second < 10:
+                                strsecond = '0' + str(second)
+                            else:
+                                strsecond = str(second)
+                            eventdate = line[59][0:4] + '-' + line[59][4:6] + '-' + line[59][6:8] + ' ' + line[59][8:10] + ':' + strminute + ':' + strsecond + '+00'
+                            dateadded = line[59][0:4] + '-' + line[59][4:6] + '-' + line[59][6:8] + ' ' + line[59][8:10] + ':' + strminute + ':' + strsecond
+
+                            if eventtitle != 'XXX':
+
+                                try:
+                                    cur.execute('INSERT INTO events_event ("GlobalEventID", "Day", "MonthYear", "Year", "FractionDate", "Actor1Code", "Actor1Name", "Actor1CountryCode", "Actor1KnownGroupCode", "Actor1EthnicCode", "Actor1Religion1Code", "Actor1Religion2Code", "Actor1Type1Code", "Actor1Type2Code", "Actor1Type3Code", "Actor2Code", "Actor2Name", "Actor2CountryCode", "Actor2KnownGroupCode", "Actor2EthnicCode", "Actor2Religion1Code", "Actor2Religion2Code", "Actor2Type1Code", "Actor2Type2Code", "Actor2Type3Code", "IsRootEvent", "EventCode", "EventBaseCode", "EventRootCode", "QuadClass", "GoldsteinScale", "NumMentions", "NumSources", "NumArticles", "AvgTone", "Actor1Geo_Type", "Actor1Geo_Fullname", "Actor1Geo_CountryCode", "Actor1Geo_ADM1Code", "Actor1Geo_ADM2Code", "Actor1Geo_Lat", "Actor1Geo_Long", "Actor1Geo_FeatureID", "Actor2Geo_Type", "Actor2Geo_Fullname", "Actor2Geo_CountryCode", "Actor2Geo_ADM1Code", "Actor2Geo_ADM2Code", "Actor2Geo_Lat", "Actor2Geo_Long", "Actor2Geo_FeatureID", "ActionGeo_Type", "ActionGeo_Fullname", "ActionGeo_CountryCode", "ActionGeo_ADM1Code", "ActionGeo_ADM2Code", "ActionGeo_Lat", "ActionGeo_Long", "ActionGeo_FeatureID", "DateAdded", "SourceURL", "DataMapCountry", "EventDate") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TIMESTAMPTZ %s)', (line[0], line[1], line[2], line[3], line[4], line[5], line[6], line[7], line[8], line[9], line[10], line[11], line[12], line[13], line[14], line[15], line[16], line[17], line[18], line[19], line[20], line[21], line[22], line[23], line[24], line[25], line[26], line[27], line[28], line[29], line[30], line[31], line[32], line[33], line[34], line[35], line[36], line[37], line[38], line[39], line[40], line[41], line[42], line[43], line[44], line[45], line[46], line[47], line[48], line[49], line[50], line[51], line[52], line[53], line[54], line[55], line[56], line[57], line[58], dateadded, eventtitle, location, eventdate))
+                                except:
+                                    pass
+
+                                conn.commit()
+
+                            else:
                                 pass
-
-                            conn.commit()
 
         else:
             logging.error('Location File - The data file location has not been updated.')
+
+    else:
+        logging.error('Location File - The data file location was named incorrectly.')

@@ -2,9 +2,11 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework import status
 
+from django.db.models import Count
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from .models import Event
 from .serializers import *
+import datetime
 
 @api_view(['GET', 'POST'])
 def events_list(request):
@@ -12,7 +14,7 @@ def events_list(request):
         data = []
         nextPage = 1
         previousPage = 1
-        events = Event.objects.all().order_by('-pk')
+        events = Event.objects.all().order_by('-EventDate')
         page = request.GET.get('page', 1)
         paginator = Paginator(events, 25)
         try:
@@ -58,3 +60,29 @@ def events_detail(request, pk):
     elif request.method == 'DELETE':
         event.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+@api_view(['GET'])
+def event_map(request, date):
+
+    currenttime = datetime.datetime.now() - datetime.timedelta(minutes=15)
+    orangefilter = currenttime - datetime.timedelta(seconds=1)
+    bluefilter = currenttime.day
+
+    try:
+        #two fetches
+        orangeevents = Event.objects.values('DataMapCountry').filter(EventDate__range=[orangefilter, currenttime]).exclude(DataMapCountry='').annotate(dcount=Count('DataMapCountry'))
+        blueevents = Event.objects.values('DataMapCountry').filter(EventDate__day=bluefilter).exclude(DataMapCountry='').annotate(dcount=Count('DataMapCountry'))
+
+        orangeeventmap = []
+        blueeventmap = []
+
+        # two set up of data
+        for dict in orangeevents:
+            orangeeventmap.append(list(dict.values()))
+
+        for dict in blueevents:
+            blueeventmap.append(list(dict.values()))
+
+    except:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    return Response({ 'blue': blueeventmap, 'orange': orangeeventmap })
